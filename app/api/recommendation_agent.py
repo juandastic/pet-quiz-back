@@ -1,8 +1,10 @@
 import os
 import json
 import logging
+import re
 from typing import Dict, List, Any, TypedDict
 from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
@@ -84,24 +86,7 @@ def create_search_products_node():
     return search_for_products
 
 def create_explanation_node():
-    prompt = ChatPromptTemplate.from_template("""
-        Actúa como un experto en mascotas y asistente de compras. Basándote en las necesidades del usuario, crea una explicación personalizada de por qué este producto específico es adecuado.
-
-        Necesidades del usuario (español):
-        {summary_es}
-
-        Necesidades del usuario (inglés):
-        {summary_en}
-
-        Producto:
-        Nombre: {product_name}
-        Descripción: {product_description}
-
-        Por favor escribe una explicación concisa y detallada en español de por qué este producto es bueno para las necesidades específicas de la mascota del usuario. Menciona características específicas del producto que se alinean con las necesidades identificadas.
-    """)
-
     model = ChatOpenAI(temperature=0.7, model="gpt-4o-mini")
-    chain = prompt | model
 
     def create_explanation(state: AgentState) -> AgentState:
         try:
@@ -109,24 +94,75 @@ def create_explanation_node():
                 logger.info("No products found, skipping explanations")
                 return state
 
-            logger.info(f"Generating explanations for {len(state['products'])} products")
-            products_with_explanations = []
+            logger.info(f"Generating explanations for {len(state['products'])} products in a single call")
 
-            for i, product in enumerate(state["products"]):
-                logger.info(f"Processing product {i+1}/{len(state['products'])}: {product['name']}")
-                result = chain.invoke({
-                    "summary_es": state["summary_es"],
-                    "summary_en": state["summary_en"],
-                    "product_name": product["name"],
-                    "product_description": product["description"][:200]
+            # Prepare simplified product data for the prompt
+            products_for_prompt = []
+            for product in state["products"]:
+                products_for_prompt.append({
+                    "id": product["id"],
+                    "name": product["name"],
+                    "description": product["description"][:200]
                 })
 
-                # Create a new product dict with the explanation
-                product_with_explanation = product.copy()
-                product_with_explanation["explanation"] = result.content
-                products_with_explanations.append(product_with_explanation)
+            # Create the prompt directly as a message
+            system_message = """Actúa como un experto en mascotas. Genera explicaciones breves de por qué cada producto satisface las necesidades específicas del usuario.
 
-            state["products"] = products_with_explanations
+                Instrucciones:
+                1. Para cada producto en la lista, crea una explicación corta y concisa (máximo 2 frases).
+                2. Enfócate en por qué el producto es adecuado para las necesidades específicas de la mascota.
+                3. Menciona solo las características más relevantes que se alinean con las necesidades.
+                4. Responde con un JSON que contenga el ID del producto y su explicación.
+            """
+
+            user_message = f"""Necesidades del usuario (español):
+                {state['summary_es']}
+
+                Necesidades del usuario (inglés):
+                {state['summary_en']}
+
+                Productos:
+                {json.dumps(products_for_prompt, ensure_ascii=False)}
+
+                Genera una explicación concisa para cada producto y devuelve un JSON con este formato:
+                [{{"id": "id_del_producto", "explanation": "explicación_concisa"}}]
+            """
+
+            # Make a single call to the model with all products
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+            result = model.invoke(messages)
+
+            # Parse the response using LangChain's JSON parser
+            try:
+                # Extract JSON from potential markdown code blocks
+                parser = JsonOutputParser()
+                parsed_content = parser.parse(result.content)
+
+                # Create a dictionary for quick lookup
+                explanation_dict = {item["id"]: item["explanation"] for item in parsed_content}
+
+                # Add explanations to products and remove descriptions
+                products_with_explanations = []
+                for product in state["products"]:
+                    product_copy = {k: v for k, v in product.items() if k != "description"}
+                    product_copy["explanation"] = explanation_dict.get(
+                        product["id"], "No se pudo generar una explicación para este producto."
+                    )
+                    products_with_explanations.append(product_copy)
+
+                state["products"] = products_with_explanations
+            except Exception as e:
+                logger.error(f"Failed to parse model response: {str(e)}\nResponse content: {result.content}")
+                # Fallback: keep products without descriptions removed
+                products_with_explanations = []
+                for product in state["products"]:
+                    product_copy = {k: v for k, v in product.items() if k != "description"}
+                    products_with_explanations.append(product_copy)
+                state["products"] = products_with_explanations
+
             return state
         except Exception as e:
             logger.error(f"Error in create_explanation node: {str(e)}")

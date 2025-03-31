@@ -1,91 +1,85 @@
 import os
+import logging
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from pinecone import Pinecone
 
 load_dotenv()
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 def search_products(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    index = pc.Index("products-index")
-    namespace = ""
+    logger.info(f"Searching for products with query: '{query}', top_k={top_k}")
+
+    if not query or query.strip() == "":
+        logger.warning("Empty query provided to search_products")
+        return []
 
     try:
-        # Try using the search method with text input for integrated embedding
-        results = index.search(
-            namespace=namespace,
-            query={
-                "inputs": {"text": query},
-                "top_k": top_k
-            },
-            fields=["name", "price", "image_url", "product_link", "search_query", "text"]
-        )
-        print(f"Search completed using integrated embedding")
+        pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+        if not pc or not os.getenv("PINECONE_API_KEY"):
+            logger.error("Pinecone API key not found or invalid")
+            return []
+
+        index = pc.Index("products-index")
+        namespace = ""
+        logger.info(f"Connected to Pinecone index 'products-index'")
+
+        try:
+            logger.info(f"Searching with integrated embedding")
+            results = index.search(
+                namespace=namespace,
+                query={
+                    "inputs": {"text": query},
+                    "top_k": top_k
+                },
+                fields=["name", "price", "image_url", "product_link", "search_query", "text"]
+            )
+            logger.info(f"Search completed successfully")
+        except Exception as e:
+            logger.error(f"Error performing search: {str(e)}")
+            return []
     except Exception as e:
-        print(f"Error using integrated search: {e}")
-        print("Falling back to standard search with embedding API")
-
-        # Fallback to manual embedding and vector search
-        embedding_model = "llama-text-embed-v2"
-        embedding_api_url = "https://api.pinecone.io/embedding/v1/embed"
-
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "Api-Key": os.getenv("PINECONE_API_KEY")
-        }
-
-        payload = {
-            "model": embedding_model,
-            "texts": [query]
-        }
-
-        import requests
-        response = requests.post(embedding_api_url, headers=headers, json=payload)
-        if response.status_code != 200:
-            raise Exception(f"Error getting embedding: {response.text}")
-
-        result = response.json()
-        query_embedding = result["embeddings"][0]
-
-        # Search using the embedding vector
-        results = index.query(
-            vector=query_embedding,
-            top_k=top_k,
-            include_metadata=True,
-            namespace=namespace
-        )
+        logger.error(f"Unexpected error in search_products: {str(e)}")
+        return []
 
     products = []
 
-    # Handle different result formats based on which method was used
-    if hasattr(results, 'matches'):
-        # Standard query result format
-        for match in results.matches:
-            product = {
-                "id": match.id,
-                "score": match.score,
-                "name": match.metadata.get("name", ""),
-                "price": match.metadata.get("price", 0.0),
-                "image_url": match.metadata.get("image_url", ""),
-                "product_link": match.metadata.get("product_link", ""),
-                "description": match.metadata.get("text", ""), # Text might be stored here
-                "search_query": match.metadata.get("search_query", "")
-            }
-            products.append(product)
-    elif hasattr(results, 'records'):
-        # New search API result format
-        for record in results.records:
-            product = {
-                "id": record.get("_id", ""),
-                "score": record.get("_score", 0.0),
-                "name": record.get("name", ""),
-                "price": record.get("price", 0.0),
-                "image_url": record.get("image_url", ""),
-                "product_link": record.get("product_link", ""),
-                "description": record.get("text", ""),
-                "search_query": record.get("search_query", "")
-            }
-            products.append(product)
+    # Guard against None results
+    if results is None:
+        logger.warning("Search returned None results")
+        return products
 
+    try:
+        if not hasattr(results, 'result') or not hasattr(results.result, 'hits'):
+            logger.warning(f"Unexpected response format from Pinecone: {results}")
+            return products
+
+        hits = results.result.hits
+        if not hits:
+            logger.info("No hits found in search results")
+            return products
+
+        logger.info(f"Processing {len(hits)} hits from search")
+        for hit in hits:
+            try:
+                fields = hit.get('fields', {})
+                product = {
+                    "id": hit.get('_id', ''),
+                    "score": hit.get('_score', 0.0),
+                    "name": fields.get('name', ''),
+                    "price": fields.get('price', 0.0),
+                    "image_url": fields.get('image_url', ''),
+                    "product_link": fields.get('product_link', ''),
+                    "description": fields.get('text', ''),
+                    "search_query": fields.get('search_query', '')
+                }
+                products.append(product)
+            except Exception as e:
+                logger.error(f"Error processing hit: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error processing search results: {str(e)}")
+
+    logger.info(f"Returning {len(products)} products from search")
     return products
