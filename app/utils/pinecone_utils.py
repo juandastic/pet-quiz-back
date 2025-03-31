@@ -9,7 +9,7 @@ def search_products(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     index = pc.Index("products-index")
     namespace = ""
-    
+
     try:
         # Try using the search method with text input for integrated embedding
         results = index.search(
@@ -24,30 +24,30 @@ def search_products(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"Error using integrated search: {e}")
         print("Falling back to standard search with embedding API")
-        
+
         # Fallback to manual embedding and vector search
         embedding_model = "llama-text-embed-v2"
         embedding_api_url = "https://api.pinecone.io/embedding/v1/embed"
-        
+
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
             "Api-Key": os.getenv("PINECONE_API_KEY")
         }
-        
+
         payload = {
             "model": embedding_model,
             "texts": [query]
         }
-        
+
         import requests
         response = requests.post(embedding_api_url, headers=headers, json=payload)
         if response.status_code != 200:
             raise Exception(f"Error getting embedding: {response.text}")
-        
+
         result = response.json()
         query_embedding = result["embeddings"][0]
-        
+
         # Search using the embedding vector
         results = index.query(
             vector=query_embedding,
@@ -55,9 +55,9 @@ def search_products(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
             include_metadata=True,
             namespace=namespace
         )
-    
+
     products = []
-    
+
     # Handle different result formats based on which method was used
     if hasattr(results, 'matches'):
         # Standard query result format
@@ -87,5 +87,5 @@ def search_products(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
                 "search_query": record.get("search_query", "")
             }
             products.append(product)
-    
+
     return products

@@ -73,13 +73,13 @@ class PineconeIndexer:
 
                 # We need to generate embeddings for the fallback method
                 import requests
-                
+
                 # Process in smaller batches to avoid hitting limits
                 max_batch = 20
                 for i in range(0, len(records), max_batch):
                     batch_records = records[i:i + max_batch]
                     texts = [r["text"] for r in batch_records]
-                    
+
                     # Get embeddings from Pinecone
                     embedding_api_url = "https://api.pinecone.io/embedding/v1/embed"
                     headers = {
@@ -91,19 +91,19 @@ class PineconeIndexer:
                         "model": self.embedding_model,
                         "texts": texts
                     }
-                    
+
                     response = requests.post(embedding_api_url, headers=headers, json=payload)
                     if response.status_code != 200:
                         raise Exception(f"Error getting embeddings: {response.text}")
-                    
+
                     embeddings = response.json()["embeddings"]
-                    
+
                     # Create vectors with embeddings
                     vectors = []
                     for idx, record in enumerate(batch_records):
                         vector_id = record.pop("_id")
                         text = record.pop("text")
-                        
+
                         vector = {
                             "id": vector_id,
                             "values": embeddings[idx],
@@ -112,7 +112,7 @@ class PineconeIndexer:
                         # Add text to metadata
                         vector["metadata"]["text"] = text
                         vectors.append(vector)
-                    
+
                     # Upsert this batch
                     self.index.upsert(vectors=vectors, namespace=self.namespace)
                     print(f"Upserted {len(vectors)} vectors using fallback method")
