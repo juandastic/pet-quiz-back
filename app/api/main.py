@@ -9,7 +9,6 @@ import traceback
 from dotenv import load_dotenv
 
 from app.api.recommendation_agent import create_pet_recommendation_graph
-from app.utils.pinecone_utils import search_products
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

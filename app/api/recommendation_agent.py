@@ -24,8 +24,11 @@ def create_summarize_node():
 
         {quiz_data}
 
-        1. Resume la necesidad principal del usuario en una frase o párrafo corto en español.
+        1. Resume la necesidad principal del usuario en una frase o párrafo corto en español
+          - el resumen debe hablarle al usuario a lo que interpretamos de su necesidad y lo que busca para su mascota
         2. Traduce ese resumen al inglés.
+          - Este resumen es para buscar productos en la base de datos vectorial por lo que asegurate de contenr las palabras clave para la búsqueda y 
+            el contexto basado en las respuestas del usuario
 
         Output en formato JSON:
         {{

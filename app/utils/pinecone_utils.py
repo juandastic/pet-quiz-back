@@ -9,7 +9,7 @@ load_dotenv()
 # Configure logging
 logger = logging.getLogger(__name__)
 
-def search_products(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def search_products(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     logger.info(f"Searching for products with query: '{query}', top_k={top_k}")
 
     if not query or query.strip() == "":
