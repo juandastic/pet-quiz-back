@@ -116,6 +116,9 @@ def create_explanation_node():
                 4. Responde con un JSON que contenga el ID del producto y sus explicaciones en ambos idiomas.
             """
 
+            # Define the JSON format template separately to avoid f-string escaping issues
+            json_format = '[{"id": "id_del_producto", "explanation_es": "explicación_concisa_español", "explanation_en": "concise_explanation_english"}]'
+
             user_message = f"""Necesidades del usuario (español):
                 {state['summary_es']}
 
@@ -126,7 +129,7 @@ def create_explanation_node():
                 {json.dumps(products_for_prompt, ensure_ascii=False)}
 
                 Genera una explicación concisa para cada producto en español e inglés y devuelve un JSON con este formato:
-                [{"id": "id_del_producto", "explanation_es": "explicación_concisa_español", "explanation_en": "concise_explanation_english"}]
+                {json_format}
             """
 
             # Make a single call to the model with all products
