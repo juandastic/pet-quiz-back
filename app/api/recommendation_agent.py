@@ -107,13 +107,13 @@ def create_explanation_node():
                 })
 
             # Create the prompt directly as a message
-            system_message = """Actúa como un experto en mascotas. Genera explicaciones breves de por qué cada producto satisface las necesidades específicas del usuario.
+            system_message = """Actúa como un experto en mascotas bilingüe (español e inglés). Genera explicaciones breves de por qué cada producto satisface las necesidades específicas del usuario en ambos idiomas.
 
                 Instrucciones:
-                1. Para cada producto en la lista, crea una explicación corta y concisa (máximo 2 frases).
+                1. Para cada producto en la lista, crea una explicación corta y concisa (máximo 2 frases) en español e inglés.
                 2. Enfócate en por qué el producto es adecuado para las necesidades específicas de la mascota.
                 3. Menciona solo las características más relevantes que se alinean con las necesidades.
-                4. Responde con un JSON que contenga el ID del producto y su explicación.
+                4. Responde con un JSON que contenga el ID del producto y sus explicaciones en ambos idiomas.
             """
 
             user_message = f"""Necesidades del usuario (español):
@@ -125,8 +125,8 @@ def create_explanation_node():
                 Productos:
                 {json.dumps(products_for_prompt, ensure_ascii=False)}
 
-                Genera una explicación concisa para cada producto y devuelve un JSON con este formato:
-                [{{"id": "id_del_producto", "explanation": "explicación_concisa"}}]
+                Genera una explicación concisa para cada producto en español e inglés y devuelve un JSON con este formato:
+                [{"id": "id_del_producto", "explanation_es": "explicación_concisa_español", "explanation_en": "concise_explanation_english"}]
             """
 
             # Make a single call to the model with all products
@@ -142,15 +142,19 @@ def create_explanation_node():
                 parser = JsonOutputParser()
                 parsed_content = parser.parse(result.content)
 
-                # Create a dictionary for quick lookup
-                explanation_dict = {item["id"]: item["explanation"] for item in parsed_content}
+                # Create dictionaries for quick lookup
+                explanation_es_dict = {item["id"]: item["explanation_es"] for item in parsed_content}
+                explanation_en_dict = {item["id"]: item["explanation_en"] for item in parsed_content}
 
                 # Add explanations to products and remove descriptions
                 products_with_explanations = []
                 for product in state["products"]:
                     product_copy = {k: v for k, v in product.items() if k != "description"}
-                    product_copy["explanation"] = explanation_dict.get(
+                    product_copy["explanation_es"] = explanation_es_dict.get(
                         product["id"], "No se pudo generar una explicación para este producto."
+                    )
+                    product_copy["explanation_en"] = explanation_en_dict.get(
+                        product["id"], "Could not generate an explanation for this product."
                     )
                     products_with_explanations.append(product_copy)
 
@@ -161,6 +165,8 @@ def create_explanation_node():
                 products_with_explanations = []
                 for product in state["products"]:
                     product_copy = {k: v for k, v in product.items() if k != "description"}
+                    product_copy["explanation_es"] = "No se pudo generar una explicación para este producto."
+                    product_copy["explanation_en"] = "Could not generate an explanation for this product."
                     products_with_explanations.append(product_copy)
                 state["products"] = products_with_explanations
 
