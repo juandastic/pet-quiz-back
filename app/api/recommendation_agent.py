@@ -73,7 +73,7 @@ def create_summarize_node():
 def create_search_products_node():
     def search_for_products(state: AgentState) -> AgentState:
         try:
-            query = state["summary_en"]
+            query = state["summary_es"]
             logger.info(f"Searching products with query: {query}")
             search_results = search_products(query)
             logger.info(f"Found {len(search_results)} products")

@@ -1,4 +1,5 @@
 import os
+import time
 import pandas as pd
 from dotenv import load_dotenv
 from pinecone import Pinecone
@@ -33,11 +34,15 @@ class PineconeIndexer:
         df = pd.read_csv(csv_path)
         print(f"Loaded {len(df)} products from CSV")
 
-        batch_size = 50
+        batch_size = 20  # Reduced batch size
         for i in range(0, len(df), batch_size):
             batch = df.iloc[i:i + batch_size]
             self._process_batch(batch)
             print(f"Indexed batch {i//batch_size + 1}/{(len(df) + batch_size - 1)//batch_size}")
+            # Add delay between batches to avoid rate limiting
+            delay = 5  # 5 seconds delay between batches
+            print(f"Waiting {delay} seconds before next batch...")
+            time.sleep(delay)
 
     def _process_batch(self, batch):
         records = []
@@ -75,7 +80,7 @@ class PineconeIndexer:
                 import requests
 
                 # Process in smaller batches to avoid hitting limits
-                max_batch = 20
+                max_batch = 10  # Smaller batch size for fallback
                 for i in range(0, len(records), max_batch):
                     batch_records = records[i:i + max_batch]
                     texts = [r["text"] for r in batch_records]
@@ -117,10 +122,16 @@ class PineconeIndexer:
                     self.index.upsert(vectors=vectors, namespace=self.namespace)
                     print(f"Upserted {len(vectors)} vectors using fallback method")
 
+                    # Add delay between fallback batches to avoid rate limiting
+                    if i + max_batch < len(records):  # If not the last batch
+                        delay = 5  # 5 seconds delay
+                        print(f"Waiting {delay} seconds before next fallback batch...")
+                        time.sleep(delay)
+
 def main():
     indexer = PineconeIndexer()
     indexer.create_index_if_not_exists()
-    indexer.index_products("data/amazon_pet_toys_db.csv")
+    indexer.index_products("data/amazon_pet_toys_mx_db.csv")
     print("Indexing complete!")
 
 if __name__ == "__main__":
